@@ -1,5 +1,7 @@
 # delphi README
 
+> **NOTE**: This extension was only built to meet my own demand, and published on the off-chance that it might help someone else. There is now over 5K installations however, and I assume most needs are not met for Delphi development at the current state of the extension. Thus, **I encourage you to open a PR for any features you might miss**. I will hapily review and add any improvements or features.
+
 Delphi extension to allow full developer tooling for Delphi in VSCode.
 
 ## Features
