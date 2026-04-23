@@ -21,4 +21,10 @@ export default function registerRunnerCommands(context: ExtensionContext) {
             await initRunScript();
         })
     );
+
+    context.subscriptions.push(
+        commands.registerCommand('delphi.configNotReady', () => {
+            commands.executeCommand('delphi.selectConfigFile');
+        })
+    );
 }
