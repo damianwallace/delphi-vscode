@@ -7,6 +7,9 @@
  *   3. _idelaunchedForDirs deduplication fix — initConfig's "no configs" path
  *      records the active directory so a second call for the same dir does not
  *      spawn the Delphi IDE again.
+ *   4. Sentinel fix — when configFile === 'no_config_available' and a new
+ *      .delphilsp.json has been created, initConfig() must re-scan and
+ *      auto-load rather than falling into the "file no longer exists" branch.
  *
  * Tests that require real filesystem use mkdtempSync.
  * Tests that need child_process.spawn to be observed use Module._load interception.
@@ -17,7 +20,7 @@ import os = require('os');
 import path = require('path');
 import Module = require('module');
 
-import { resetMocks, mockState } from '../mocks/vscode';
+import { resetMocks, mockState, calls } from '../mocks/vscode';
 import '../mocks/vscode-setup';
 import { findNearestDproj, findNearestLSPConfig } from '../../src/client/configFile';
 
@@ -195,6 +198,97 @@ describe('Branch 3 — feat/delphi-project-ready-watcher', function () {
             assert.ok(countAfterFirst <= 1, `Expected at most 1 spawn after first initConfig call, got ${countAfterFirst}`);
             assert.strictEqual(countAfterFirst, countAfterSecond,
                 `Spawn was called again on the second initConfig for the same dir (count went from ${countAfterFirst} to ${countAfterSecond})`);
+        });
+    });
+
+    // ---------------------------------------------------------------------------
+    // Sentinel fix: 'no_config_available' must re-scan, not show "file missing"
+    //
+    // Scenario:
+    //   1. Extension activates — no .delphilsp.json found — stores sentinel.
+    //   2. User generates a config in the Delphi IDE.
+    //   3. FileSystemWatcher fires → initConfig() is called again.
+    //   4. configFile === 'no_config_available' (non-empty, but not a real URI)
+    //
+    // BUG: The old code fell into the `else if (!fileExists(...))` branch because
+    //      the sentinel is non-empty and stat('no_config_available') fails.
+    //      It showed "project config file no longer exists" and required manual
+    //      re-selection, breaking the "VS Code will load it automatically" promise.
+    //
+    // FIX: The sentinel is now treated the same as an empty string, routing
+    //      back through collectLSPConfigFiles() so the new config is auto-loaded.
+    // ---------------------------------------------------------------------------
+
+    describe('sentinel value fix — no_config_available treated as empty on re-scan', function () {
+        beforeEach(function () {
+            resetMocks();
+        });
+
+        it('sentinel: re-scans and auto-loads when one new config exists', async function () {
+            const dir = makeTempDir();
+            dirsToClean.push(dir);
+
+            // Write a real .delphilsp.json and matching .dpr so loadConfigFileJson succeeds.
+            const configPath = path.join(dir, 'Auto.delphilsp.json');
+            const dprPath = path.join(dir, 'Auto.dpr').replace(/\\/g, '/');
+            fs.writeFileSync(configPath, JSON.stringify({
+                settings: {
+                    project: dprPath,
+                    dccOptions: `-E${dir}`,
+                    browsingPaths: [],
+                    projectFiles: [],
+                    dllname: '',
+                    includeDCUsInUsesCompletion: false,
+                },
+            }));
+            fs.writeFileSync(path.join(dir, 'Auto.dpr'), 'program Auto; begin end.');
+
+            // State after IDE launch: sentinel stored, now a config has been created.
+            mockState.configFile = 'no_config_available';
+            mockState.workspaceFolders = [{ uri: { fsPath: dir } }];
+            // Simulate findFiles returning the newly-created config.
+            const configUri = 'file:///' + configPath.replace(/\\/g, '/');
+            mockState.findFilesResult = [{ fsPath: configPath, toString: () => configUri }];
+
+            const { initConfig } = await import('../../src/client/configFile');
+            await initConfig();
+
+            // Must NOT have shown the "no longer exists" error.
+            const errorMessages = (calls['window.showErrorMessage'] ?? []).map((c: any[]) => c[0] as string);
+            assert.ok(
+                !errorMessages.some((m) => m.includes('no longer exists')),
+                'Should not show "no longer exists" error when sentinel is stored — should re-scan instead'
+            );
+
+            // Must have called config.update with the new file URI (auto-loaded).
+            const configUpdates = (calls['config.update'] ?? []).filter((c: any[]) => c[0] === 'configFile');
+            const autoLoaded = configUpdates.some(
+                (c: any[]) => typeof c[1] === 'string' && c[1].includes('Auto.delphilsp.json')
+            );
+            assert.ok(autoLoaded, 'config.update should have been called with the new config file URI');
+        });
+
+        it('sentinel: re-scans and shows picker when multiple new configs exist', async function () {
+            resetMocks();
+            mockState.configFile = 'no_config_available';
+            mockState.workspaceFolders = [{ uri: { fsPath: 'C:\\tmwin\\tmwincur' } }];
+            // Simulate two configs found (should open picker, not "no longer exists").
+            mockState.findFilesResult = [
+                { fsPath: 'C:\\tmwin\\src\\a\\A.delphilsp.json', toString: () => 'file:///C:/tmwin/src/a/A.delphilsp.json' },
+                { fsPath: 'C:\\tmwin\\src\\b\\B.delphilsp.json', toString: () => 'file:///C:/tmwin/src/b/B.delphilsp.json' },
+            ];
+
+            const { initConfig } = await import('../../src/client/configFile');
+            await initConfig();
+
+            const errorMessages = (calls['window.showErrorMessage'] ?? []).map((c: any[]) => c[0] as string);
+            assert.ok(
+                !errorMessages.some((m) => m.includes('no longer exists')),
+                'Should not show "no longer exists" for sentinel — should show multi-config picker prompt instead'
+            );
+            // Should have shown the "Multiple configs found" picker prompt.
+            const multiConfigPrompt = errorMessages.some((m) => m.includes('Multiple'));
+            assert.ok(multiConfigPrompt, 'Should prompt user to select from multiple configs');
         });
     });
 });
