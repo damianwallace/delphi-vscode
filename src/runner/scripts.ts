@@ -5,6 +5,20 @@ import { Uri, workspace, WorkspaceEdit } from 'vscode';
 import { getDelphiBinDirectory } from '../utils/constantUtils';
 
 /**
+ * Wraps a Windows path in a PowerShell single-quoted string literal.
+ *
+ * PowerShell single-quoted strings are completely literal — no variable
+ * expansion and no escape-sequence processing — so backslash sequences like
+ * \t or \n are never misinterpreted, and a path containing $ will never be
+ * silently expanded. Any single quotes already present in the value are
+ * escaped by doubling them (''), which is the only escape mechanism in
+ * PowerShell single-quoted strings.
+ */
+function psSingleQuote(value: string): string {
+    return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
  * Inits the run script for the current project.
  * Creates a .bat file in the .vscode directory of current workspace.
  *
@@ -22,7 +36,9 @@ export async function initRunScript(config?: string) {
             .find((s) => s.startsWith('-E'))
             ?.replace('-E', '') || '';
 
-    const projectDproj = json.settings.project.replace(/\.dpr$/i, '.dproj').replace(/\//g, '\\\\');
+    // Use single backslashes for the .dproj path — psSingleQuote() wraps it in
+    // single-quoted PS strings where backslash is always literal.
+    const projectDproj = json.settings.project.replace(/\.dpr$/i, '.dproj').replace(/\//g, '\\');
     const resolvedExe = path.resolve(projectDir, exePath, projectName + '.exe');
     const resolvedExeDir = path.dirname(resolvedExe);
 
@@ -38,8 +54,10 @@ export async function initRunScript(config?: string) {
     let dprojContent = '';
     try { dprojContent = readFileSync(dprojFsPath, 'utf8'); } catch { /* file unreadable */ }
     const needsSearchPath = !dprojContent.includes('DCC_UnitSearchPath');
+    // Escape any single quotes in browsing paths (PowerShell '' is the only escape in single-quoted strings).
+    const escapedBrowsingPaths = json.settings.browsingPaths.map((p) => p.replace(/'/g, "''")).join(';');
     const searchPathEnv = needsSearchPath
-        ? `$env:DCC_UnitSearchPath = "${json.settings.browsingPaths.join(';')}"`
+        ? `$env:DCC_UnitSearchPath = '${escapedBrowsingPaths}'`
         : '';
 
     const wsPath = workspace.workspaceFolders[0].uri.fsPath; // gets the path of the first workspace folder
@@ -47,9 +65,9 @@ export async function initRunScript(config?: string) {
     const starterPath = Uri.file(`${wsPath}/.vscode/delphi/scripts/run.bat`);
 
     const script = `
-$PROJECT = "${projectDproj}"
-$TMROOT = "${tmRoot}"
-$TMLIB  = "$TMROOT\\lib"
+$PROJECT = ${psSingleQuote(projectDproj)}
+$TMROOT = ${psSingleQuote(tmRoot)}
+$TMLIB  = ${psSingleQuote(tmLib)}
 $env:TMROOT = $TMROOT
 $env:TMLIB  = $TMLIB
 ${searchPathEnv}
@@ -71,8 +89,8 @@ if ($args.Count -eq 0) {
 
 
 Write-Host "Running ${projectName}..."
-$exePath = "${resolvedExe}"
-$process = Start-Process -FilePath $exePath -WorkingDirectory "${resolvedExeDir}" -PassThru
+$exePath = ${psSingleQuote(resolvedExe)}
+$process = Start-Process -FilePath $exePath -WorkingDirectory ${psSingleQuote(resolvedExeDir)} -PassThru
 
 Wait-Process -Id $process.Id
 `;
