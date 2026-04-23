@@ -27,8 +27,11 @@ export async function initConfig() {
     const config = workspace.getConfiguration('delphi');
     // Get current config file
     const configFile = config.get<string>('configFile');
-    // If no config file found
-    if (configFile.length == 0) {
+    // Treat the sentinel value identically to an empty string so that when
+    // setupLSPConfigWatcher fires initConfig() after a new .delphilsp.json is
+    // created, we re-scan via collectLSPConfigFiles() rather than falling into
+    // the "previously set config that no longer exists" branch.
+    if (configFile.length == 0 || configFile === 'no_config_available') {
         // Get config file
         const configFiles = await collectLSPConfigFiles();
         if (configFiles.length == 0) {
