@@ -19,6 +19,44 @@ function psSingleQuote(value: string): string {
 }
 
 /**
+ * Parses the -U (unit search path) flag from a DCC32 options string and
+ * returns a semicolon-joined list of filesystem paths suitable for
+ * MSBuild's DCC_UnitSearchPath property.
+ *
+ * browsingPaths in .delphilsp.json are file:// URIs intended for the LSP
+ * language server — NOT filesystem paths.  dccOptions, on the other hand,
+ * contains the exact DCC32 command line the IDE used, including -U with real
+ * Windows paths, so those are the correct source for MSBuild search paths.
+ *
+ * @param dccOptions - Raw DCC32 options string from the .delphilsp.json config.
+ * @param tmLib      - Absolute path to the repo's lib/ directory; always
+ *                     prepended so that {$I TMProjectDirectives.inc} is found
+ *                     even when it is absent from dccOptions.
+ */
+function buildDccUnitSearchPath(dccOptions: string, tmLib: string): string {
+    // Extract everything after the -U flag up to the first unquoted whitespace
+    // that precedes another flag.  The regex alternates between "quoted segment"
+    // and "non-whitespace char" so it stops naturally at any unquoted space.
+    const m = dccOptions.match(/-U((?:"[^"]*"|[^\s])*)/);
+    const paths: string[] = [];
+    if (m) {
+        let cur = '', inQ = false;
+        for (const ch of m[1]) {
+            if (ch === '"')           { inQ = !inQ; }
+            else if (ch === ';' && !inQ) { if (cur) paths.push(cur); cur = ''; }
+            else                      { cur += ch; }
+        }
+        if (cur) paths.push(cur);
+    }
+    // Guarantee tmLib is present so {$I TMProjectDirectives.inc} is always found.
+    const tmLibNorm = tmLib.replace(/\//g, '\\').toLowerCase();
+    if (!paths.some((p) => p.replace(/\//g, '\\').toLowerCase() === tmLibNorm)) {
+        paths.unshift(tmLib);
+    }
+    return paths.filter(Boolean).join(';');
+}
+
+/**
  * Inits the run script for the current project.
  * Creates a .bat file in the .vscode directory of current workspace.
  *
@@ -54,10 +92,12 @@ export async function initRunScript(config?: string) {
     let dprojContent = '';
     try { dprojContent = readFileSync(dprojFsPath, 'utf8'); } catch { /* file unreadable */ }
     const needsSearchPath = !dprojContent.includes('DCC_UnitSearchPath');
-    // Escape any single quotes in browsing paths (PowerShell '' is the only escape in single-quoted strings).
-    const escapedBrowsingPaths = json.settings.browsingPaths.map((p) => p.replace(/'/g, "''")).join(';');
+    // When the .dproj has no DCC_UnitSearchPath we build one from the -U flag
+    // inside dccOptions.  Those are real Windows filesystem paths (the exact
+    // paths DCC32 used when the IDE last compiled the project), unlike
+    // browsingPaths which are file:// URI-encoded strings for LSP navigation only.
     const searchPathEnv = needsSearchPath
-        ? `$env:DCC_UnitSearchPath = '${escapedBrowsingPaths}'`
+        ? `$env:DCC_UnitSearchPath = ${psSingleQuote(buildDccUnitSearchPath(json.settings.dccOptions, tmLib))}`
         : '';
 
     const wsPath = workspace.workspaceFolders[0].uri.fsPath; // gets the path of the first workspace folder
