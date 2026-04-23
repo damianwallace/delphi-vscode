@@ -21,12 +21,20 @@ export async function initRunScript(config?: string) {
             .find((s) => s.startsWith('-E'))
             ?.replace('-E', '') || '';
 
+    // Bug 1: convert .dpr to .dproj for MSBuild (original code appended literal "oj")
+    const projectDproj = json.settings.project.replace(/\.dpr$/i, '.dproj').replace(/\//g, '\\\\');
+
+    // Bug 2: resolve the exe path properly instead of evaluating path.join() at template-string
+    //        build time, which produced a Node.js expression literal in the generated script.
+    const resolvedExe = path.resolve(projectDir, exePath, projectName + '.exe');
+    const resolvedExeDir = path.dirname(resolvedExe);
+
     const wsPath = workspace.workspaceFolders[0].uri.fsPath; // gets the path of the first workspace folder
     const filePath = Uri.file(`${wsPath}/.vscode/delphi/scripts/${projectName}_run.ps1`);
     const starterPath = Uri.file(`${wsPath}/.vscode/delphi/scripts/run.bat`);
 
     const script = `
-$PROJECT = "${json.settings.project}oj"
+$PROJECT = "${projectDproj}"
 $MSBUILD_DIR = [System.Environment]::GetEnvironmentVariable('FrameworkDir', [System.EnvironmentVariableTarget]::Process)
 
 & $MSBUILD_DIR\\MSBuild.exe $PROJECT "/t:Clean,Make"
@@ -45,8 +53,9 @@ if ($args.Count -eq 0) {
 
 
 Write-Host "Running ${projectName}..."
-$exePath = "${path.join(projectDir, exePath, projectName + '.exe')}"
-$process = Start-Process -FilePath $exePath -PassThru
+$exePath = "${resolvedExe}"
+# Bug 3: set WorkingDirectory so the exe finds its runtime files relative to the bin folder
+$process = Start-Process -FilePath $exePath -WorkingDirectory "${resolvedExeDir}" -PassThru
 
 Wait-Process -Id $process.Id
 `;
