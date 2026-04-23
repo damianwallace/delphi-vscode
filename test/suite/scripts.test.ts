@@ -6,7 +6,8 @@
  *   Bug 2 — exe path was not properly resolved to an absolute path
  *   Bug 3 — Start-Process was missing -WorkingDirectory
  *
- * Also verifies the feat branch TMROOT/TMLIB env-var injection.
+ * Also verifies the feat branch TMROOT/TMLIB env-var injection and the
+ * PS-safe single-quote fix for literal path assignments.
  */
 import assert = require('assert');
 import path = require('path');
@@ -60,12 +61,12 @@ describe('Branch 1 — fix/delphi-run-script-bugs', function () {
         );
     });
 
-    it('Bug 2 fix: $exePath is a fully resolved absolute path', function () {
-        // Should contain a drive letter path like C:\...\MMDisp.exe, not a Node.js expression.
+    it('Bug 2 fix: $exePath is a fully resolved absolute path in a single-quoted PS string', function () {
+        // Path assignments now use PS single-quoted strings: $exePath = 'C:\...\MMDisp.exe'
         assert.match(
             scriptContent,
-            /\$exePath\s*=\s*"[A-Za-z]:\\/,
-            '$exePath must be a resolved Windows absolute path'
+            /\$exePath\s*=\s*'[A-Za-z]:\\/,
+            "$exePath must be a resolved Windows absolute path in a PS single-quoted string ('C:\\...')"
         );
     });
 
@@ -79,5 +80,31 @@ describe('Branch 1 — fix/delphi-run-script-bugs', function () {
     it('feat: script injects $env:TMROOT and $env:TMLIB', function () {
         assert.ok(scriptContent.includes('$env:TMROOT'), 'Missing $env:TMROOT');
         assert.ok(scriptContent.includes('$env:TMLIB'), 'Missing $env:TMLIB');
+    });
+
+    it('PS-safe fix: $PROJECT, $TMROOT, $TMLIB, $exePath all use single-quoted PS strings', function () {
+        // Double-quoted PS strings expand $variables — single-quoted strings are purely literal.
+        assert.match(scriptContent, /\$PROJECT\s*=\s*'/, "$PROJECT must use single-quoted PS string");
+        assert.match(scriptContent, /\$TMROOT\s*=\s*'/, "$TMROOT must use single-quoted PS string");
+        assert.match(scriptContent, /\$TMLIB\s*=\s*'/, "$TMLIB must use single-quoted PS string");
+        assert.match(scriptContent, /\$exePath\s*=\s*'/, "$exePath must use single-quoted PS string");
+    });
+
+    it('PS-safe fix: $env:DCC_UnitSearchPath uses single-quoted PS string', function () {
+        // Only present when the .dproj has no DCC_UnitSearchPath; fixture qualifies.
+        assert.match(
+            scriptContent,
+            /\$env:DCC_UnitSearchPath\s*=\s*'/,
+            "$env:DCC_UnitSearchPath must use a single-quoted PS string"
+        );
+    });
+
+    it('PS-safe fix: $TMLIB is fully resolved, not built from "$TMROOT\\lib"', function () {
+        // The old pattern embedded the variable reference in a double-quoted string,
+        // producing a double backslash before "lib". The fix uses the pre-computed tmLib path.
+        assert.ok(
+            !scriptContent.includes('"$TMROOT'),
+            'Found old "$TMROOT..." double-quoted construction in script'
+        );
     });
 });

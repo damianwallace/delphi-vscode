@@ -1,6 +1,6 @@
 {
     "settings": {
-        "project": "C:/tmwin/tmwincur/src/mmdisp/MMDisp.dpr",
+        "project": "C:/test/delphi-vscode-fixture/TestProject.dpr",
         "dllname": "",
         "dccOptions": "-EC:\\tmwin\\tmwincur\\bin",
         "projectFiles": [],
