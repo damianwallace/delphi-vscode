@@ -205,7 +205,7 @@ export async function loadConfigFileJson(config?: string) {
 /**
  * Walk up from startDir to the workspace root looking for the nearest .dproj file.
  */
-function findNearestDproj(startDir: string): string | undefined {
+export function findNearestDproj(startDir: string): string | undefined {
     const wsRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
     let dir = startDir;
     while (true) {
@@ -224,7 +224,7 @@ function findNearestDproj(startDir: string): string | undefined {
 /**
  * Walk up from startDir looking for the nearest .delphilsp.json file.
  */
-function findNearestLSPConfig(startDir: string): string | undefined {
+export function findNearestLSPConfig(startDir: string): string | undefined {
     const wsRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
     let dir = startDir;
     while (true) {

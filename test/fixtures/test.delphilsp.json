@@ -1,0 +1,10 @@
+{
+    "settings": {
+        "project": "C:/tmwin/tmwincur/src/mmdisp/MMDisp.dpr",
+        "dllname": "",
+        "dccOptions": "-EC:\\tmwin\\tmwincur\\bin",
+        "projectFiles": [],
+        "includeDCUsInUsesCompletion": false,
+        "browsingPaths": ["C:\\tmwin\\tmwincur\\lib"]
+    }
+}

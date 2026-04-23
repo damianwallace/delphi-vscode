@@ -106,7 +106,7 @@ export class RunManager {
      * Looks for a .delphilsp.json file in the given directory.
      * Returns the full path if found, undefined otherwise.
      */
-    private findConfigInDir(dir: string): string | undefined {
+    public findConfigInDir(dir: string): string | undefined {
         try {
             const entries = readdirSync(dir);
             const config = entries.find((f) => f.toLowerCase().endsWith('.delphilsp.json'));
