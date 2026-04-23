@@ -108,3 +108,49 @@ describe('Branch 1 — fix/delphi-run-script-bugs', function () {
         );
     });
 });
+
+// ---------------------------------------------------------------------------
+// ArFc-style config: dccOptions contains -U flag, browsingPaths are file:// URIs
+// ---------------------------------------------------------------------------
+describe('dccOptions -U parsing — ArFc-style config', function () {
+    let scriptContent: string;
+
+    before(async function () {
+        resetMocks();
+        mockState.workspaceFolders = [{ uri: { fsPath: 'C:\\tmwin\\tmwincur' } }];
+        const fixture = path.resolve(__dirname, '..', '..', '..', 'test', 'fixtures', 'test-arfc-style.delphilsp.json');
+        const fixtureUri = 'file:///' + fixture.replace(/\\/g, '/');
+        mockState.configFile = fixtureUri;
+        await initRunScript(fixtureUri);
+
+        const applyEditCalls = calls['workspace.applyEdit'];
+        assert.ok(applyEditCalls && applyEditCalls.length > 0, 'workspace.applyEdit was never called');
+        const edit: WorkspaceEdit = applyEditCalls[applyEditCalls.length - 1][0];
+        scriptContent = edit.getScriptContent(0);
+    });
+
+    it('injects $env:DCC_UnitSearchPath from -U paths, not from file:// browsingPaths URIs', function () {
+        // browsingPaths are file:// URIs and must NOT appear in DCC_UnitSearchPath.
+        assert.ok(
+            !scriptContent.includes('file%3A') && !scriptContent.includes('file:///'),
+            'file:// URI-encoded path found in $env:DCC_UnitSearchPath — browsingPaths must not be used'
+        );
+        // The -U paths from dccOptions must appear (real Windows path).
+        assert.ok(
+            scriptContent.includes('C:\\tmwin\\tmwincur\\lib'),
+            'Expected C:\\tmwin\\tmwincur\\lib from -U dccOptions flag to be in DCC_UnitSearchPath'
+        );
+    });
+
+    it('DCC_UnitSearchPath includes all -U paths (tmLib, dunitx, indy10\\core)', function () {
+        assert.ok(scriptContent.includes('tmwincur\\lib\\dunitx'), 'Missing dunitx path from -U');
+        assert.ok(scriptContent.includes('indy10\\core'), 'Missing indy10\\core path from -U');
+    });
+
+    it('DCC_UnitSearchPath includes quoted -U path (program files with spaces)', function () {
+        assert.ok(
+            scriptContent.includes('embarcadero\\studio\\23.0\\lib\\Win32\\debug'),
+            'Expected quoted path with spaces from -U to be unquoted and included'
+        );
+    });
+});
