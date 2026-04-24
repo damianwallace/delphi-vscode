@@ -1,0 +1,1 @@
+{"version":3,"file":"vscode-languageclient.js","sourceRoot":"","sources":["../../../test/mocks/vscode-languageclient.ts"],"names":[],"mappings":";;;AAAA;;;;;GAKG;AACU,QAAA,kCAAkC,GAAG;IAC9C,IAAI,EAAE,kCAAkC;CAC3C,CAAC;AAEF,MAAa,cAAc;IACvB,gBAAgB,CAAC,KAAU,EAAE,OAAa;QACtC,OAAO,OAAO,CAAC,OAAO,EAAE,CAAC;IAC7B,CAAC;CACJ;AAJD,wCAIC"}

@@ -1,2 +1,3 @@
-# Set default behavior to automatically normalize line endings.
-* text=auto
+# Windows-first: normalized text files use CRLF in the working tree (LF in Git blobs).
+# Stops "LF will be replaced by CRLF" churn on checkout/add for .js/.ts under out-test/, etc.
+* text=auto eol=crlf
