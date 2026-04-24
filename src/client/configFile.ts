@@ -1,8 +1,10 @@
-import { readFileSync } from 'fs';
+import { spawn } from 'child_process';
+import { readFileSync, readdirSync } from 'fs';
 import path = require('path');
 import {
     commands,
     ConfigurationChangeEvent,
+    ExtensionContext,
     QuickPickItem,
     QuickPickOptions,
     Uri,
@@ -12,6 +14,10 @@ import {
 import { DidChangeConfigurationNotification, LanguageClient } from 'vscode-languageclient/node';
 import { initRunScript } from '../runner/scripts';
 import { fileExists } from '../utils/fileUtils';
+import { getDelphiBinDirectory } from '../utils/constantUtils';
+
+// Tracks project dirs for which the IDE has already been launched this session.
+const _idelaunchedForDirs = new Set<string>();
 
 /**
  * Init configuration file. Loads an existing config file or propmts user to pick one.
@@ -21,45 +27,59 @@ export async function initConfig() {
     const config = workspace.getConfiguration('delphi');
     // Get current config file
     const configFile = config.get<string>('configFile');
-    // If no config file found
-    if (configFile.length == 0) {
+    // Treat the sentinel value identically to an empty string so that when
+    // setupLSPConfigWatcher fires initConfig() after a new .delphilsp.json is
+    // created, we re-scan via collectLSPConfigFiles() rather than falling into
+    // the "previously set config that no longer exists" branch.
+    if (configFile.length == 0 || configFile === 'no_config_available') {
         // Get config file
         const configFiles = await collectLSPConfigFiles();
         if (configFiles.length == 0) {
             commands.executeCommand('setContext', 'delphi.projectReady', false);
-            window.showWarningMessage('Delphi: No DelphiLSP project config file were found.');
             updateConfigWithSelectedItem('no_config_available');
+            const activeFile = window.activeTextEditor?.document.uri.fsPath;
+            const activeDir = activeFile ? path.dirname(activeFile) : undefined;
+            const dprojPath = activeDir ? findNearestDproj(activeDir) : undefined;
+            if (activeDir) {
+                _idelaunchedForDirs.add(activeDir.toLowerCase());
+            }
+            launchDelphiIDE(dprojPath);
+            window.showWarningMessage(
+                'Delphi: No .delphilsp.json found — Delphi IDE opened. Enable "Generate LSP Config" in ' +
+                    'Tools › Options › Editor › Language › Delphi › Code Insight, then close and reopen the project. ' +
+                    'VS Code will load the config automatically.',
+                'Browse for existing config…'
+            ).then((selection) => {
+                if (selection === 'Browse for existing config…') {
+                    commands.executeCommand('delphi.selectConfigFile');
+                }
+            });
         } else if (configFiles.length == 1) {
             updateConfigWithSelectedItem(configFiles[0]);
         } else {
+            // Multiple configs: open the picker directly
             commands.executeCommand('setContext', 'delphi.projectReady', false);
-            window
-                .showWarningMessage(
-                    'Delphi: Multiple DelphiLSP project config files were found. Please select one.',
-                    'Select project config'
-                )
-                .then((selection) => {
-                    if (selection === 'Select project config') {
-                        commands.executeCommand('delphi.selectConfigFile');
-                    }
-                });
-        }
-    } else if (!(await fileExists(Uri.parse(configFile)))) {
-        // If previously set LSP config file doesn't exist any more, request to select a new one
-        commands.executeCommand('setContext', 'delphi.projectReady', false);
-        updateConfigWithSelectedItem('no_config_available');
-        window
-            .showWarningMessage(
-                'Delphi: The configured DelphiLSP project config file "' +
-                    configFile +
-                    '" can not be found.',
+            window.showErrorMessage(
+                'Delphi: Multiple .delphilsp.json files found — select the active project.',
                 'Select project config'
-            )
-            .then((selection) => {
+            ).then((selection) => {
                 if (selection === 'Select project config') {
                     commands.executeCommand('delphi.selectConfigFile');
                 }
             });
+        }
+    } else if (!(await fileExists(Uri.parse(configFile)))) {
+        // If previously set LSP config file doesn't exist any more, open picker immediately
+        commands.executeCommand('setContext', 'delphi.projectReady', false);
+        updateConfigWithSelectedItem('no_config_available');
+        window.showErrorMessage(
+            'Delphi: Project config file no longer exists — select a new one.',
+            'Select project config'
+        ).then((selection) => {
+            if (selection === 'Select project config') {
+                commands.executeCommand('delphi.selectConfigFile');
+            }
+        });
     } else {
         // If everything good already, display load message to the user
         commands.executeCommand('setContext', 'delphi.projectReady', true);
@@ -183,6 +203,97 @@ export async function loadConfigFileJson(config?: string) {
         'C:/'
     );
     return json as DelphiLSPConfig;
+}
+
+/**
+ * Walk up from startDir to the workspace root looking for the nearest .dproj file.
+ */
+function findNearestDproj(startDir: string): string | undefined {
+    const wsRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
+    let dir = startDir;
+    while (true) {
+        try {
+            const entries = readdirSync(dir);
+            const dproj = entries.find((f) => f.toLowerCase().endsWith('.dproj'));
+            if (dproj) return path.join(dir, dproj);
+        } catch { /* skip unreadable dirs */ }
+        const parent = path.dirname(dir);
+        if (parent === dir || (wsRoot && dir.toLowerCase() === wsRoot.toLowerCase())) break;
+        dir = parent;
+    }
+    return undefined;
+}
+
+/**
+ * Walk up from startDir looking for the nearest .delphilsp.json file.
+ */
+function findNearestLSPConfig(startDir: string): string | undefined {
+    const wsRoot = workspace.workspaceFolders?.[0]?.uri.fsPath;
+    let dir = startDir;
+    while (true) {
+        try {
+            const entries = readdirSync(dir);
+            const config = entries.find((f) => f.toLowerCase().endsWith('.delphilsp.json'));
+            if (config) return path.join(dir, config);
+        } catch { /* skip unreadable dirs */ }
+        const parent = path.dirname(dir);
+        if (parent === dir || (wsRoot && dir.toLowerCase() === wsRoot.toLowerCase())) break;
+        dir = parent;
+    }
+    return undefined;
+}
+
+/**
+ * Launch the Delphi IDE (bds.exe) with the given project pre-loaded.
+ * The process is detached so closing VS Code does not kill the IDE.
+ */
+function launchDelphiIDE(dprojPath?: string): void {
+    const bdsExe = path.join(getDelphiBinDirectory(), 'bds.exe');
+    const args = ['-pDelphi'];
+    if (dprojPath) args.push(dprojPath);
+    try {
+        const proc = spawn(bdsExe, args, { detached: true, stdio: 'ignore' });
+        proc.unref();
+    } catch { /* bds.exe not found — the toast still guides the user */ }
+}
+
+/**
+ * Register a FileSystemWatcher for .delphilsp.json files so the extension
+ * auto-loads a config the moment the user saves one from the Delphi IDE.
+ *
+ * Also listens for active editor changes to detect when the user switches to
+ * a Pascal file whose project has no LSP config yet, and opens the IDE for them.
+ */
+export function setupLSPConfigWatcher(context: ExtensionContext): void {
+    // Auto-reload when any .delphilsp.json is created in the workspace.
+    const watcher = workspace.createFileSystemWatcher('**/*.delphilsp.json');
+    watcher.onDidCreate(() => initConfig());
+    context.subscriptions.push(watcher);
+
+    // Per-project check: when the active editor changes to a Pascal file,
+    // see if that project already has a config. If not, open the IDE once.
+    context.subscriptions.push(
+        window.onDidChangeActiveTextEditor((editor) => {
+            if (!editor) return;
+            if (!editor.document.uri.fsPath.match(/\.(pas|dpr|dpk|inc)$/i)) return;
+
+            const fileDir = path.dirname(editor.document.uri.fsPath);
+            const key = fileDir.toLowerCase();
+
+            // Only offer once per project dir per session.
+            if (_idelaunchedForDirs.has(key)) return;
+            if (findNearestLSPConfig(fileDir)) return; // already has a config
+
+            _idelaunchedForDirs.add(key);
+            const dprojPath = findNearestDproj(fileDir);
+            launchDelphiIDE(dprojPath);
+            window.showWarningMessage(
+                'Delphi: No LSP config for this project — Delphi IDE opened. ' +
+                    'Enable "Generate LSP Config" in Tools › Options › Editor › Language › Delphi › Code Insight, ' +
+                    'then close and reopen the project. VS Code will load the config automatically.'
+            );
+        })
+    );
 }
 
 class UriItem implements QuickPickItem {

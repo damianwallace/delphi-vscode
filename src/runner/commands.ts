@@ -1,4 +1,4 @@
-import { commands, ExtensionContext } from 'vscode';
+import { commands, ExtensionContext, Uri } from 'vscode';
 import { RunManager } from './runManager';
 import { initRunScript } from './scripts';
 
@@ -11,8 +11,10 @@ export default function registerRunnerCommands(context: ExtensionContext) {
     const manager = new RunManager();
 
     context.subscriptions.push(
-        commands.registerCommand('delphi.run', async () => {
-            await manager.run();
+        // VS Code passes the current document URI as the first argument when the
+        // command is invoked from editor/title/run context.
+        commands.registerCommand('delphi.run', async (resourceUri?: Uri) => {
+            await manager.run(resourceUri);
         })
     );
 
