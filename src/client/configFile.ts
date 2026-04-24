@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { readFileSync, readdirSync } from 'fs';
 import path = require('path');
+import { fileURLToPath } from 'url';
 import {
     commands,
     ConfigurationChangeEvent,
@@ -18,6 +19,44 @@ import { getDelphiBinDirectory } from '../utils/constantUtils';
 
 // Tracks project dirs for which the IDE has already been launched this session.
 const _idelaunchedForDirs = new Set<string>();
+
+/**
+ * Normalises `delphi.configFile` / `.delphilsp.json` `settings.project` values to a real
+ * filesystem path. Workspace settings and Delphi often store `file:///c%3A/...` URIs;
+ * ad‑hoc `decodeURI` + string replaces mishandle those and can yield paths like
+ * `C:\\repo\\c%3A\\...` after `path.resolve`, breaking run cwd and MSBuild.
+ */
+export function uriOrPathToFsPath(value: string): string {
+    const v = value.trim();
+    if (!v) return v;
+    if (/^file:/i.test(v)) {
+        try {
+            return fileURLToPath(v);
+        } catch {
+            /* fall through */
+        }
+    }
+    // Percent-encoded path without a scheme (e.g. `c%3A\\tmwin\\...` from tooling).
+    if (/%[0-9A-Fa-f]{2}/.test(v)) {
+        const normalized = v.replace(/\\/g, '/');
+        const candidates = normalized.startsWith('/')
+            ? [`file://${normalized}`]
+            : [`file:///${normalized}`];
+        for (const c of candidates) {
+            try {
+                return fileURLToPath(c);
+            } catch {
+                /* try next */
+            }
+        }
+        try {
+            return decodeURIComponent(normalized);
+        } catch {
+            return v;
+        }
+    }
+    return v;
+}
 
 /**
  * Init configuration file. Loads an existing config file or propmts user to pick one.
@@ -195,13 +234,10 @@ export async function loadConfigFileJson(config?: string) {
         }
         config = storedValue;
     }
-    const path = decodeURI(config.replace('file:///', '')).replace('c%3A', 'C:/');
-    const data = readFileSync(path, 'utf8');
+    const configFsPath = uriOrPathToFsPath(config);
+    const data = readFileSync(configFsPath, 'utf8');
     const json: DelphiLSPConfig = await JSON.parse(data);
-    json.settings.project = decodeURI(json.settings.project.replace('file:///', '')).replace(
-        'C%3A',
-        'C:/'
-    );
+    json.settings.project = uriOrPathToFsPath(json.settings.project);
     return json as DelphiLSPConfig;
 }
 

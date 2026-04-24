@@ -1,5 +1,5 @@
 import path = require('path');
-import { loadConfigFileJson } from '../client/configFile';
+import { loadConfigFileJson, uriOrPathToFsPath } from '../client/configFile';
 import { ProcessExecution, Task, tasks, TaskScope, Uri, window, workspace } from 'vscode';
 import { readdirSync } from 'fs';
 
@@ -47,7 +47,7 @@ export class RunManager {
         // If the found config doesn't match the configured project, warn and stop.
         // The user must switch manually via "Delphi: Select Config File".
         const storedConfig = workspace.getConfiguration('delphi').get<string>('configFile') ?? '';
-        const storedConfigPath = decodeURIComponent(storedConfig.replace('file:///', '').replace(/^\//, ''));
+        const storedConfigPath = uriOrPathToFsPath(storedConfig);
         const normalizedStored = storedConfigPath.replace(/\//g, '\\').toLowerCase();
         const normalizedFound = configInActiveDir.replace(/\//g, '\\').toLowerCase();
 
