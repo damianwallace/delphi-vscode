@@ -102,13 +102,23 @@
                 "command": "delphi.run",
                 "title": "Delphi: Run current project",
                 "icon": "$(play)"
+            },
+            {
+                "command": "delphi.configNotReady",
+                "title": "Delphi: Select project config",
+                "icon": "$(loading~spin)"
             }
         ],
         "menus": {
             "editor/title/run": [
                 {
-                    "when": "resourceLangId == objectpascal",
+                    "when": "resourceLangId == objectpascal && delphi.projectReady",
                     "command": "delphi.run",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceLangId == objectpascal && !delphi.projectReady",
+                    "command": "delphi.configNotReady",
                     "group": "navigation"
                 }
             ]
