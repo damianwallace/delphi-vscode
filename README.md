@@ -13,6 +13,7 @@ Delphi extension to allow full developer tooling for Delphi in VSCode.
 - **Active file guard** — The run command now uses the active editor's project instead of always defaulting to the first workspace project, so running works correctly in multi-project workspaces.
 - **`no_config_available` sentinel handling** — When no `.delphilsp.json` existed at activation, the extension wrote a sentinel value that later caused the FileSystemWatcher to route into the wrong error branch. The sentinel is now treated as empty so auto-discovery works correctly.
 - **Unit search path injection** — Parses the `-U` flag from `dccOptions` in the LSP config (the real DCC32 filesystem paths written by the IDE) and injects them into the generated build script as `DCC_UnitSearchPath`, so shared include files like project-wide directive files are always resolvable by MSBuild.
+- **Config / project path decoding** — Workspace `delphi.configFile` and `settings.project` values are often stored as `file:` URLs with a percent-encoded drive (for example `file:///c%3A/...`). Those strings are normalized with Node `fileURLToPath` so `loadConfigFileJson` and the Run task see real filesystem paths instead of broken segments such as `...\c%3A\...` under `path.resolve`.
 
 ### New features
 
@@ -104,6 +105,46 @@ npm install -g @vscode/vsce
    4. Open the Command Palette and run **Developer: Reload Window** (`Ctrl+Shift+P` → `Reload Window`) to apply the changes
 
    > **Important:** You must reload the window after every install. Simply recompiling is not enough — Cursor loads the extension once at startup and will continue running the old version until the window is reloaded.
+
+## Automated tests
+
+The repo ships a **Mocha** suite that exercises extension logic through **VS Code API mocks**. Tests compile with **`tsconfig.test.json`** into **`out-test/`** (this is separate from **`out/`**, which is what `npm run compile` / the packaged extension use).
+
+### What the suites cover
+
+| Suite | File | Focus |
+|--------|------|--------|
+| Run script / `-U` parsing | `test/suite/scripts.test.ts` | Generated `_run.ps1`: `.dproj` target, PowerShell single-quoted paths, `WorkingDirectory`, `TMROOT` / `TMLIB`, `DCC_UnitSearchPath` from `dccOptions` `-U`; ArFc-style configs (quoted `-U` paths; `browsingPaths` must not appear in `DCC_UnitSearchPath`). |
+| Run command guards | `test/suite/runManager.test.ts` | No active file, no `.delphilsp.json`, configured project mismatch; happy path when the on-disk config matches (including **percent-encoded `file:`** `delphi.configFile` on **Windows** — skipped on other platforms). |
+| Config / paths / sentinel | `test/suite/configFile.test.ts` | `findNearestDproj` / `findNearestLSPConfig`, `no_config_available` re-scan behaviour, **`uriOrPathToFsPath`** / **`loadConfigFileJson`** for `file:` and `%3A`-encoded paths (Windows-only cases skip elsewhere). |
+
+Fixtures live under **`test/fixtures/`** (for example `test.delphilsp.json`, `test-arfc-style.delphilsp.json`). Mocha is configured in **`.mocharc.json`** (spec glob, `vscode-setup` preload, custom reporter).
+
+### Run all tests
+
+From the repo root:
+
+```bash
+npm install
+npm test
+```
+
+This runs **`tsc -p tsconfig.test.json`** (refreshes `out-test/…`) then **`mocha`** using **`.mocharc.json`**.
+
+### Update or add tests
+
+1. Change **`test/suite/*.test.ts`** and/or add JSON under **`test/fixtures/`** as needed.
+2. Run **`npm test`** again so TypeScript recompiles into `out-test` and Mocha picks up the new output.
+
+After each run, a Markdown summary is written to **`test/results/report.md`** (see `test/reporter.ts`).
+
+### Run a single compiled suite (optional)
+
+```bash
+npx mocha out-test/test/suite/configFile.test.js
+```
+
+Use other filenames under `out-test/test/suite/` the same way. You still need a current `out-test` tree (`npm test` once, or `npx tsc -p tsconfig.test.json` before `npx mocha`).
 
 ## Extension Settings
 
