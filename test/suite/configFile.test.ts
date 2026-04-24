@@ -19,10 +19,16 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import Module = require('module');
+import { pathToFileURL } from 'url';
 
 import { resetMocks, mockState, calls } from '../mocks/vscode';
 import '../mocks/vscode-setup';
-import { findNearestDproj, findNearestLSPConfig } from '../../src/client/configFile';
+import {
+    findNearestDproj,
+    findNearestLSPConfig,
+    loadConfigFileJson,
+    uriOrPathToFsPath,
+} from '../../src/client/configFile';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -289,6 +295,98 @@ describe('Branch 3 — feat/delphi-project-ready-watcher', function () {
             // Should have shown the "Multiple configs found" picker prompt.
             const multiConfigPrompt = errorMessages.some((m) => m.includes('Multiple'));
             assert.ok(multiConfigPrompt, 'Should prompt user to select from multiple configs');
+        });
+    });
+});
+
+/**
+ * Post–PR#1 regression: `delphi.configFile` / `settings.project` often arrive as `file:///c%3A/...`.
+ * Ad-hoc decodeURI + string replace produced bogus paths (e.g. `...\\c%3A\\...`) and broke Run cwd.
+ */
+describe('April 2025 — uriOrPathToFsPath and loadConfigFileJson', function () {
+    const dirsToClean: string[] = [];
+
+    after(function () {
+        for (const d of dirsToClean) {
+            try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+    });
+
+    /** Simulates workspace / Delphi storing the drive colon as `%3A` after `file:///`. */
+    function toPercentEncodedDriveFileUrl(absPath: string): string {
+        const norm = path.resolve(absPath).replace(/\\/g, '/');
+        const encoded = norm.replace(/^([A-Za-z]):/, '$1%3A');
+        return 'file:///' + encoded;
+    }
+
+    describe('uriOrPathToFsPath', function () {
+        it('round-trips pathToFileURL → uriOrPathToFsPath to the same normalized path', function () {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delphi-uri-test-'));
+            dirsToClean.push(dir);
+            const filePath = path.join(dir, 'x.delphilsp.json');
+            fs.writeFileSync(filePath, '{}');
+            const href = pathToFileURL(filePath).href;
+            const out = uriOrPathToFsPath(href);
+            assert.strictEqual(path.normalize(out), path.normalize(filePath), `Got: ${out}`);
+        });
+
+        it('decodes file URL with percent-encoded drive letter (Windows)', function () {
+            if (process.platform !== 'win32') {
+                this.skip();
+            }
+            const input = 'file:///c%3A/tmwin/tmwincur/src/app.delphilsp.json';
+            const out = uriOrPathToFsPath(input);
+            assert.match(out, /^c:\\/i, `Expected drive path, got: ${out}`);
+            assert.ok(out.toLowerCase().includes('tmwin'), out);
+        });
+
+        it('decodes path fragment with %3A but no file: scheme (Windows)', function () {
+            if (process.platform !== 'win32') {
+                this.skip();
+            }
+            const out = uriOrPathToFsPath('c%3A\\tmwin\\repo\\x.dpr');
+            assert.match(out, /^c:\\/i, `Got: ${out}`);
+        });
+
+        it('returns plain paths unchanged when no file: scheme and no percent escapes', function () {
+            assert.strictEqual(uriOrPathToFsPath('relative\\x.dpr'), 'relative\\x.dpr');
+        });
+    });
+
+    describe('loadConfigFileJson', function () {
+        it('reads config file and project when both use percent-encoded drive in file: URL', async function () {
+            if (process.platform !== 'win32') {
+                this.skip();
+            }
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delphi-lsp-load-'));
+            dirsToClean.push(dir);
+            const dprPath = path.join(dir, 'Enc.dpr');
+            const cfgPath = path.join(dir, 'Enc.delphilsp.json');
+            fs.writeFileSync(dprPath, 'program Enc; begin end.');
+            const dprUrl = toPercentEncodedDriveFileUrl(dprPath);
+            fs.writeFileSync(
+                cfgPath,
+                JSON.stringify({
+                    settings: {
+                        project: dprUrl,
+                        dccOptions: `-E${dir}`,
+                        browsingPaths: [],
+                        projectFiles: [],
+                        dllname: '',
+                        includeDCUsInUsesCompletion: false,
+                    },
+                })
+            );
+            const cfgUrl = toPercentEncodedDriveFileUrl(cfgPath);
+            const json = await loadConfigFileJson(cfgUrl);
+            if (!json) {
+                assert.fail('loadConfigFileJson should succeed for encoded config path');
+            }
+            assert.strictEqual(
+                path.normalize(json.settings.project),
+                path.normalize(dprPath),
+                `project field should decode to real .dpr path; got: ${json.settings.project}`
+            );
         });
     });
 });
