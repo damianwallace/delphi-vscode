@@ -1,4 +1,4 @@
-import { ExtensionContext } from 'vscode';
+import { commands, ExtensionContext } from 'vscode';
 import {
     activateLSPClient,
     deactivateLSPClient,
@@ -12,6 +12,7 @@ import registerRunnerCommands from './runner/commands';
  * @param context Context for the extension
  */
 export async function activate(context: ExtensionContext) {
+    commands.executeCommand('setContext', 'delphi.projectReady', false);
     registerLSPCommands(context);
     await activateLSPClient(context);
     registerRunnerCommands(context);

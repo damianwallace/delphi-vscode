@@ -26,11 +26,13 @@ export async function initConfig() {
         // Get config file
         const configFiles = await collectLSPConfigFiles();
         if (configFiles.length == 0) {
+            commands.executeCommand('setContext', 'delphi.projectReady', false);
             window.showWarningMessage('Delphi: No DelphiLSP project config file were found.');
             updateConfigWithSelectedItem('no_config_available');
         } else if (configFiles.length == 1) {
             updateConfigWithSelectedItem(configFiles[0]);
         } else {
+            commands.executeCommand('setContext', 'delphi.projectReady', false);
             window
                 .showWarningMessage(
                     'Delphi: Multiple DelphiLSP project config files were found. Please select one.',
@@ -44,6 +46,7 @@ export async function initConfig() {
         }
     } else if (!(await fileExists(Uri.parse(configFile)))) {
         // If previously set LSP config file doesn't exist any more, request to select a new one
+        commands.executeCommand('setContext', 'delphi.projectReady', false);
         updateConfigWithSelectedItem('no_config_available');
         window
             .showWarningMessage(
@@ -59,6 +62,7 @@ export async function initConfig() {
             });
     } else {
         // If everything good already, display load message to the user
+        commands.executeCommand('setContext', 'delphi.projectReady', true);
         window.showInformationMessage(
             'Delphi: Loaded configured project ' + path.basename(configFile)
         );
@@ -74,8 +78,10 @@ export async function initConfig() {
 export function updateConfigWithSelectedItem(configFile: UriItem | string) {
     const config = workspace.getConfiguration('delphi');
     if (typeof configFile === 'string') {
+        commands.executeCommand('setContext', 'delphi.projectReady', false);
         config.update('configFile', configFile); // No config file was found
     } else {
+        commands.executeCommand('setContext', 'delphi.projectReady', true);
         config.update('configFile', configFile.uri);
         window.showInformationMessage('Loaded project ' + path.basename(configFile.label));
         initRunScript(configFile.uri); // Init run script for the new project
