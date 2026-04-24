@@ -1,0 +1,10 @@
+{
+    "settings": {
+        "project": "C:/test/delphi-vscode-fixture/TestProject.dpr",
+        "dllname": "",
+        "dccOptions": "-EC:\\tmwin\\tmwincur\\bin",
+        "projectFiles": [],
+        "includeDCUsInUsesCompletion": false,
+        "browsingPaths": ["C:\\tmwin\\tmwincur\\lib"]
+    }
+}
