@@ -29,7 +29,7 @@ Delphi extension to allow full developer tooling for Delphi in VSCode.
 
 ## Requirements
 
-- Delphi 11 (RAD Studio) installed
+- Delphi 11 Alexandria (RAD Studio 22.0) or later — `DelphiLSP.exe` was introduced in version 11 and is required for LSP features. The extension auto-detects the newest installed version.
 - `TMLIB` environment variable set to your shared library path (if your project uses a `$(TMLIB)` search path variable in `.dproj` files)
 - Project LSP config generated with Delphi
   - In Delphi: **Tools > Options > User Interface > Editor > Language** (pick Delphi from the dropdown) > **Code Insight** > enable **Generate LSP Config**, then close and reopen your project
@@ -38,8 +38,8 @@ Delphi extension to allow full developer tooling for Delphi in VSCode.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or later)
-- [npm](https://www.npmjs.com/)
+- [Node.js](https://nodejs.org/) v18 or later (v18 is the minimum; v22 is recommended)
+- npm v8 or later (included with Node.js 18+)
 - [vsce](https://github.com/microsoft/vscode-vsce) — the VS Code extension packaging tool
 
 Install `vsce` globally if you don't have it:
