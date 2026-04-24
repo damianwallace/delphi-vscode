@@ -34,6 +34,65 @@ Delphi extension to allow full developer tooling for Delphi in VSCode.
 - Project LSP config generated with Delphi
   - In Delphi: **Tools > Options > User Interface > Editor > Language** (pick Delphi from the dropdown) > **Code Insight** > enable **Generate LSP Config**, then close and reopen your project
 
+## Building and Installing the Extension
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or later)
+- [npm](https://www.npmjs.com/)
+- [vsce](https://github.com/microsoft/vscode-vsce) — the VS Code extension packaging tool
+
+Install `vsce` globally if you don't have it:
+
+```bash
+npm install -g @vscode/vsce
+```
+
+### Steps
+
+1. **Clone the repo**
+
+   ```bash
+   git clone https://github.com/damianwallace/delphi-vscode.git
+   cd delphi-vscode
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   npm install
+   ```
+
+3. **Compile the TypeScript**
+
+   ```bash
+   npm run compile
+   ```
+
+4. **Package the extension into a `.vsix` file**
+
+   ```bash
+   npm run package
+   ```
+
+   This produces a file like `delphi-1.0.1.vsix` in the project root.
+
+5. **Install the `.vsix` into Cursor / VS Code**
+
+   Open the Command Palette (`Ctrl+Shift+P`) and run:
+
+   ```
+   Extensions: Install from VSIX...
+   ```
+
+   Select the generated `.vsix` file. Reload when prompted.
+
+   Alternatively, install from the terminal:
+
+   ```bash
+   code --install-extension delphi-1.0.1.vsix
+   ```
+
 ## Extension Settings
 
 - `delphi.bin` — Path to Delphi `bin` folder. Defaults to newest installation.
