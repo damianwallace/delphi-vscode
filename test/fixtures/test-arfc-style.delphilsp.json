@@ -1,0 +1,13 @@
+{
+    "settings": {
+        "project": "C:/test/delphi-vscode-fixture/ArFcStyle.dpr",
+        "dllname": "dcc32290.dll",
+        "dccOptions": "-$O- -$W+ -EC:\\tmwin\\tmwincur\\bin -U\"c:\\program files (x86)\\embarcadero\\studio\\23.0\\lib\\Win32\\debug\";C:\\tmwin\\tmwincur\\lib;C:\\tmwin\\tmwincur\\lib\\dunitx;C:\\tmwin\\tmwincur\\lib\\indy10\\core -LEC:\\Users\\dWallac1\\Documents\\Embarcadero\\Studio\\23.0\\Bpl",
+        "projectFiles": [],
+        "includeDCUsInUsesCompletion": true,
+        "browsingPaths": [
+            "file:///c%3A/program%20files%20%28x86%29/embarcadero/studio/23.0/SOURCE/VCL",
+            "file:///c%3A/program%20files%20%28x86%29/embarcadero/studio/23.0/source/rtl/common"
+        ]
+    }
+}

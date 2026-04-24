@@ -1,0 +1,6 @@
+{
+    "require": ["out-test/test/mocks/vscode-setup.js"],
+    "reporter": "./out-test/test/reporter.js",
+    "spec": "out-test/test/suite/**/*.test.js",
+    "timeout": 10000
+}
