@@ -93,6 +93,17 @@ npm install -g @vscode/vsce
    code --install-extension delphi-1.0.1.vsix
    ```
 
+6. **Copy a new build into your running Cursor session (quick update)**
+
+   If you are actively developing the extension and want to test a new build without going through the full install flow each time:
+
+   1. Run `npm run compile` to recompile
+   2. Run `npm run package` to produce a new `.vsix`
+   3. Install via the Command Palette as above — Cursor will replace the existing version in place
+   4. Open the Command Palette and run **Developer: Reload Window** (`Ctrl+Shift+P` → `Reload Window`) to apply the changes
+
+   > **Important:** You must reload the window after every install. Simply recompiling is not enough — Cursor loads the extension once at startup and will continue running the old version until the window is reloaded.
+
 ## Extension Settings
 
 - `delphi.bin` — Path to Delphi `bin` folder. Defaults to newest installation.
