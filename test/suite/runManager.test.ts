@@ -15,6 +15,13 @@ import os = require('os');
 import path = require('path');
 
 import { Uri, calls, resetMocks, mockState } from '../mocks/vscode';
+
+/** Same encoding shape as VS Code / Delphi sometimes persist for `delphi.configFile`. */
+function toPercentEncodedDriveFileUrl(absPath: string): string {
+    const norm = path.resolve(absPath).replace(/\\/g, '/');
+    const encoded = norm.replace(/^([A-Za-z]):/, '$1%3A');
+    return 'file:///' + encoded;
+}
 import '../mocks/vscode-setup';
 import { RunManager } from '../../src/runner/runManager';
 
@@ -100,6 +107,36 @@ describe('Branch 2 — fix/delphi-active-file-guard', function () {
         mockState.activeTextEditor = { document: { uri: Uri.file(path.join(projectDir, 'Unit1.pas')) } };
         await manager.run(undefined);
         assert.ok(calls['tasks.executeTask']?.length > 0, 'Expected executeTask to be called on happy path');
+    });
+
+    it('Guard 4b (happy path): percent-encoded drive in stored file: URI still matches → executeTask', async function () {
+        if (process.platform !== 'win32') {
+            this.skip();
+        }
+        const projectDir = makeTempDir();
+        dirsToClean.push(projectDir);
+        const configPath = path.join(projectDir, 'Enc.delphilsp.json');
+        const dprPath = path.join(projectDir, 'Enc.dpr').replace(/\\/g, '/');
+        fs.writeFileSync(
+            configPath,
+            JSON.stringify({
+                settings: {
+                    project: dprPath,
+                    dccOptions: `-E${path.join(projectDir, 'bin')}`,
+                    browsingPaths: [],
+                    projectFiles: [],
+                    dllname: '',
+                    includeDCUsInUsesCompletion: false,
+                },
+            })
+        );
+        fs.writeFileSync(path.join(projectDir, 'Enc.dpr'), 'program Enc;\nbegin end.');
+
+        mockState.configFile = toPercentEncodedDriveFileUrl(configPath);
+        mockState.workspaceFolders = [{ uri: { fsPath: projectDir } }];
+        mockState.activeTextEditor = { document: { uri: Uri.file(path.join(projectDir, 'Unit1.pas')) } };
+        await manager.run(undefined);
+        assert.ok(calls['tasks.executeTask']?.length > 0, 'executeTask should run when encoded URI matches disk path');
     });
 
     it('findConfigInDir: returns path when .delphilsp.json exists in dir', function () {
